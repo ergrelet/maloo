@@ -26,11 +26,8 @@ class IrcBot:
 		print("Ping received from {}, sending Pong !".format(server))
 		self.socket.send(bytes("PONG :{}\r\n".format(server), 'UTF-8'))
 	
-	def on_join(self, channel):
-		print("Joined " + channel)
-	
-	def on_quit(self):
-		self.socket.close()
+	def on_join(self, username, channel):
+		print(username + " joined " + channel)
 
 	def on_privmsg(self, user, channel, message):
 		if user == self.nick:
@@ -73,8 +70,8 @@ class IrcBot:
 	
 	def connect(self, server, port):
 			print("Connecting to {}:{}".format(self.server, self.port))
-			self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			try:
+				self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 				self.socket.connect((self.server, int(self.port)))
 			except Exception:
 				raise Exception
@@ -130,9 +127,8 @@ class IrcBot:
 							message = fields[2]
 							self.on_privmsg(username, cmd_args[2], message)
 						elif cmd_args[1] == "JOIN":
-							self.on_join(cmd_args[2])
-						elif cmd_args[1] == "QUIT":
-							self.on_quit()
+							username = fields[1].split('!', 1)[0]
+							self.on_join(username, cmd_args[2])
 					if fields[0].strip() == "PING":
 						server = fields[1]
 						self.on_ping(server)
