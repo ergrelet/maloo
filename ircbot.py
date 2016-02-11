@@ -1,6 +1,5 @@
 # coding: utf8
 
-from random import randrange
 import socket
 
 import maloobot
@@ -32,7 +31,7 @@ class IrcBot:
 	
 	def on_quit(self):
 		self.socket.close()
-	
+
 	def on_privmsg(self, user, channel, message):
 		if user == self.nick:
 			return
@@ -68,7 +67,7 @@ class IrcBot:
 			self.privmsg(channel, "!quit - Pls no. (ADMIN ONLY)")
 		elif message.find(self.nick) > -1:
 			message = message.replace(self.nick, "")
-			self.privmsg(channel, "{}: {}".format(pseudo, self.maloo.generate_answer(message)))
+			self.privmsg(channel, "{}: {}".format(user, self.maloo.generate_answer(message)))
 		elif self.now_learning and nb_of_words > 3 and message[0] != "!":
 			self.maloo.learnfrom_sentence(message)
 	
@@ -112,29 +111,31 @@ class IrcBot:
 
 		# Main loop
 		while True:
-			data = self.socket.recv(256)
-			try:
-				sdata = data.decode("utf-8")
-			except UnicodeDecodeError:
-				print("Error while decoding, skipping packet")
-				continue
-			fields = sdata.split(':', 2)
-			nb_of_fields = len(fields)
-			if nb_of_fields > 1:
-				cmd_args = fields[1].split(' ')
-				nb_of_args = len(cmd_args)
-				if nb_of_args > 1:
-					if cmd_args[1] == "PRIVMSG":
-						username = fields[1].split('!', 1)[0]
-						message = fields[2].replace("\r", "").replace("\n", "")
-						self.on_privmsg(username, cmd_args[2], message)
-					elif cmd_args[1] == "JOIN":
-						self.on_join(cmd_args[2])
-					elif cmd_args[1] == "QUIT":
-						self.on_quit()
-				if fields[0].strip() == "PING":
-					server = fields[1].replace("\r", "").replace("\n", "")
-					self.on_ping(server)
+			data = self.socket.recv(2048)
+			packets = data.split(b"\r\n")
+			for packet in packets:
+				try:
+					sdata = packet.decode("utf-8")
+				except UnicodeDecodeError:
+					print("Error while decoding, skipping packet")
+					continue
+				fields = sdata.split(':', 2)
+				nb_of_fields = len(fields)
+				if nb_of_fields > 1:
+					cmd_args = fields[1].split(' ')
+					nb_of_args = len(cmd_args)
+					if nb_of_args > 1:
+						if cmd_args[1] == "PRIVMSG":
+							username = fields[1].split('!', 1)[0]
+							message = fields[2]
+							self.on_privmsg(username, cmd_args[2], message)
+						elif cmd_args[1] == "JOIN":
+							self.on_join(cmd_args[2])
+						elif cmd_args[1] == "QUIT":
+							self.on_quit()
+					if fields[0].strip() == "PING":
+						server = fields[1]
+						self.on_ping(server)
 
 		self.disconnect("Chelou.")
 		print("Disconnected !")
