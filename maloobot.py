@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from random import randrange
 import sqlite3
 import textwrap
+import twitter
 
 def word_is_okay(word):
 	return word.replace("'", "").replace("-", "").isalnum() or \
@@ -34,6 +35,10 @@ class MalooBot:
 		self.customsearch_id = config_api["customsearch_id"]
 		self.customsearch_key = config_api["customsearch_key"]
 		self.imgur_key = config_api["imgur_key"]
+		self.twitter_key = config_api["twitter_key"]
+		self.twitter_secret = config_api["twitter_secret"]
+		self.twitter_token = config_api["twitter_token"]
+		self.twitter_token_secret = config_api["twitter_token_secret"]
 		
 	def generate_answer(self, sentence):
 		sqldb = sqlite3.connect(self.db_name)
@@ -152,6 +157,12 @@ class MalooBot:
 		
 		return [stem1, stem2]
 		
+	def post_tweet(self, message):
+		# Twitter
+		oauth = twitter.OAuth(self.twitter_token, self.twitter_token_secret, self.twitter_key, self.twitter_secret)
+		client = twitter.Twitter(auth = oauth)
+		client.statuses.update(status = message)
+		
 	def learnfrom_sentence(self, sentence):
 		sentence = sentence.replace("'", "''")
 		sentence = sentence.replace(",", " , ")
@@ -194,8 +205,8 @@ class MalooBot:
 		binary_data = file.read()
 		payload = {'image': binary_data,
 						'type': 'file'}
-		details = urllib.parse.urlencode(payload)
-		url = urllib.request.Request(imgur_url, details.encode('ascii'))
+		details = urllib.parse.urlencode(payload).encode('ascii')
+		url = urllib.request.Request(imgur_url, details)
 		url.add_header("Authorization","Client-ID {}".format(api_key))
 		try:
 			response = urllib.request.urlopen(url, timeout=20).read().decode('utf8', 'ignore')
@@ -209,6 +220,7 @@ class MalooBot:
 		stem = self.generate_stem(hint)
 		query = stem[0] + " " + stem[1]
 		sentence = self.generate_sentence(stem)
+		# Google
 		try:
 			image_url = self.get_image(query)
 		except Exception:
@@ -236,6 +248,7 @@ class MalooBot:
 			current_h += text_h + pad
 		
 		img.save("./maloo.png")
+		# Imgur
 		try:
 			result_url = self.upload_image("./maloo.png")
 		except Exception:
