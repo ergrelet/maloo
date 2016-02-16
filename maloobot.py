@@ -164,7 +164,7 @@ class MalooBot:
             oauth = twitter.OAuth(self.twitter_token, self.twitter_token_secret, self.twitter_key, self.twitter_secret)
             client = twitter.Twitter(auth=oauth)
             client.statuses.update(status=message)
-         except Exception:
+        except Exception:
             pass
 
     def learnfrom_sentence(self, sentence):
