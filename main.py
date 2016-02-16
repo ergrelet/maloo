@@ -1,11 +1,19 @@
 # coding: utf8
 
+"""
+main.py
+-------
+
+Everything starts from here !
+"""
+
 import configparser
 import sys
 
 import ircbot
 
 def main():
+    """ Main function """
     print("Maloo Bot - In Python !\n")
 
     if len(sys.argv) < 2:

@@ -1,17 +1,22 @@
 # coding: utf8
 
+"""
+maloobot.py
+--------
+
+Here's the definition of the MalooBot class.
+"""
+
 from io import BytesIO
-import json
-import urllib.parse
-import urllib.request
 from random import randrange
 import textwrap
+import urllib.request
 
 import sqlite3
 from PIL import Image, ImageDraw, ImageFont
-import twitter
 
 def word_is_okay(word):
+    """ This function is checking for undesired words """
     return word.replace("'", "").replace("-", "").isalnum() or \
         word == "," or \
         word == "." or \
@@ -21,27 +26,28 @@ def word_is_okay(word):
         word == "..."
 
 def text_with_border(draw, pos_x, pos_y, b_color, f_color, text, font):
+    """ Needed to write text with borders of a different color """
     try:
         draw.text((pos_x + 1, pos_y), text, font=font, fill=b_color)
         draw.text((pos_x - 1, pos_y), text, font=font, fill=b_color)
         draw.text((pos_x, pos_y + 1), text, font=font, fill=b_color)
         draw.text((pos_x, pos_y - 1), text, font=font, fill=b_color)
         draw.text((pos_x, pos_y), text, font=font, fill=f_color)
-    except Exception:
-        raise Exception
+    except Exception as ex:
+        raise ex
 
 class MalooBot:
-    def __init__(self, config_sql, config_api):
+    """
+    This class is Maloo's core.
+    It generates sentences, learn from sentences,
+    goes on the internet (!) to find images, upload images
+    and to post tweets.
+    """
+    def __init__(self, config_sql):
         self.db_name = config_sql["db_name"]
-        self.customsearch_id = config_api["customsearch_id"]
-        self.customsearch_key = config_api["customsearch_key"]
-        self.imgur_key = config_api["imgur_key"]
-        self.twitter_key = config_api["twitter_key"]
-        self.twitter_secret = config_api["twitter_secret"]
-        self.twitter_token = config_api["twitter_token"]
-        self.twitter_token_secret = config_api["twitter_token_secret"]
 
     def generate_answer(self, sentence):
+        """ Generate an answer to the given message """
         sqldb = sqlite3.connect(self.db_name)
         sqlcursor = sqldb.cursor()
 
@@ -57,7 +63,11 @@ class MalooBot:
         else:
             word_id = randrange(0, len(words))
         word = words[word_id]
-        query = "SELECT word1, word2 FROM base WHERE (lower(word1)=lower('{0}') or lower(word2)=lower('{0}')) ORDER BY RANDOM() LIMIT 1".format(word.replace("'", "''"))
+        query = """SELECT word1, word2
+                        FROM base
+                        WHERE (lower(word1)=lower('{0}') or lower(word2)=lower('{0}'))
+                        ORDER BY RANDOM()
+                        LIMIT 1""".format(word.replace("'", "''"))
         sqlcursor.execute(query)
         rows = sqlcursor.fetchall()
         if len(rows) == 0:
@@ -68,6 +78,9 @@ class MalooBot:
         return self.generate_sentence([word, next_word])
 
     def generate_sentence(self, stem=None):
+        """ Generate a sentence.
+        If a stem (a couple of word) is given, it is used to generate the sentence,
+        otherwise, a random stem is generated """
         if stem is None:
             stem = self.generate_stem()
             while len(stem[0]) < 2 and len(stem[1]) < 2:
@@ -84,13 +97,14 @@ class MalooBot:
         # Right side
         for _ in range(60):
             sqlcursor.execute("""SELECT next.word
-                        FROM base
-                        INNER JOIN next
-                        ON base.id = next.stem_id
-                        WHERE lower('{}') = lower(base.word1)
-                        AND lower('{}') = lower(base.word2)
-                        ORDER BY RANDOM() * probability DESC
-                        LIMIT 1""".format(word1.replace("'", "''"), word2.replace("'", "''")))
+                                FROM base
+                                INNER JOIN next
+                                ON base.id = next.stem_id
+                                WHERE lower('{}') = lower(base.word1)
+                                AND lower('{}') = lower(base.word2)
+                                ORDER BY RANDOM() * probability DESC
+                                LIMIT 1""".format(word1.replace("'", "''"), \
+                                                word2.replace("'", "''")))
             rows = sqlcursor.fetchall()
             if len(rows) == 0:
                 break
@@ -110,13 +124,14 @@ class MalooBot:
         # Left side
         for _ in range(30):
             sqlcursor.execute("""SELECT previous.word
-                        FROM base
-                        INNER JOIN previous
-                        ON base.id = previous.stem_id
-                        WHERE lower('{}') = lower(base.word1)
-                        AND lower('{}') = lower(base.word2)
-                        ORDER BY RANDOM() * probability DESC
-                        LIMIT 1""".format(word1.replace("'", "''"), word2.replace("'", "''")))
+                                FROM base
+                                INNER JOIN previous
+                                ON base.id = previous.stem_id
+                                WHERE lower('{}') = lower(base.word1)
+                                AND lower('{}') = lower(base.word2)
+                                ORDER BY RANDOM() * probability DESC
+                                LIMIT 1""".format(word1.replace("'", "''"), \
+                                                word2.replace("'", "''")))
             rows = sqlcursor.fetchall()
             if len(rows) == 0:
                 break
@@ -138,13 +153,21 @@ class MalooBot:
         return sentence
 
     def generate_stem(self, hint=""):
+        """ Returns a random couple of word from the database """
         sqldb = sqlite3.connect(self.db_name)
         sqlcursor = sqldb.cursor()
 
         if hint != "":
-            query = "SELECT word1, word2 FROM base WHERE (lower('{0}') = lower(word1) or lower('{0}') = lower(word2)) ORDER BY RANDOM() LIMIT 1".format(hint.replace("'", "''"))
+            query = """SELECT word1, word2
+                            FROM base
+                            WHERE (lower('{0}') = lower(word1) or lower('{0}') = lower(word2))
+                            ORDER BY RANDOM()
+                            LIMIT 1""".format(hint.replace("'", "''"))
         else:
-            query = "SELECT word1, word2 FROM base ORDER BY RANDOM() LIMIT 1"
+            query = """SELECT word1, word2
+                            FROM base
+                            ORDER BY RANDOM()
+                            LIMIT 1"""
         sqlcursor.execute(query)
         rows = sqlcursor.fetchall()
 
@@ -158,16 +181,8 @@ class MalooBot:
 
         return [stem1, stem2]
 
-    def post_tweet(self, message):
-        # Twitter
-        try:
-            oauth = twitter.OAuth(self.twitter_token, self.twitter_token_secret, self.twitter_key, self.twitter_secret)
-            client = twitter.Twitter(auth=oauth)
-            client.statuses.update(status=message)
-        except Exception:
-            pass
-
     def learnfrom_sentence(self, sentence):
+        """ Extracts words from a sentence to save it the database """
         sentence = sentence.replace("'", "''")
         sentence = sentence.replace(",", " , ")
         sentence = sentence.replace(".", " . ")
@@ -186,78 +201,44 @@ class MalooBot:
                 self.db_add_word_ba(words[i], words[i+1], words[i+2], words[i+3])
             self.db_add_word_b(words[nb_of_words-3], words[nb_of_words-2], words[nb_of_words-1])
 
-    def get_image(self, query):
-        url = "https://www.googleapis.com/customsearch/v1"
-        # &fileType=jpg
-        url = "{}?q={}&searchType=image&key={}&cx={}".format(url, urllib.parse.quote_plus(query), self.customsearch_key, self.customsearch_id)
-        try:
-            response = urllib.request.urlopen(url, timeout=5)
-        except urllib.error.HTTPError as ex:
-            raise ex
-        data = response.read().decode("utf-8")
-        result = json.loads(data)
-        image_url = result['items'][0]['link'] # return the first image found on google images
-
-        return image_url
-
-    def upload_image(self, image_path):
-        api_key = self.imgur_key
-        imgur_url = "https://api.imgur.com/3/image.json"
-        file = open(image_path, 'rb')
-        binary_data = file.read()
-        payload = {'image': binary_data, 'type': 'file'}
-        details = urllib.parse.urlencode(payload).encode('ascii')
-        url = urllib.request.Request(imgur_url, details)
-        url.add_header("Authorization", "Client-ID {}".format(api_key))
-        try:
-            response = urllib.request.urlopen(url, timeout=20).read().decode('utf8', 'ignore')
-        except Exception:
-            raise Exception
-        j = json.loads(response)
-
-        return j['data']['link']
-
-    def generate_image(self, hint=""):
+    def generate_image(self, image_url, font_name, hint=""):
+        """ Very obscure shit, good exception generator """
         stem = self.generate_stem(hint)
-        query = stem[0] + " " + stem[1]
         sentence = self.generate_sentence(stem)
-        # Google
-        try:
-            image_url = self.get_image(query)
-        except Exception:
-            return "L'image que Google m'a filé est 404 Not Found :("
         try:
             img = Image.open(BytesIO(urllib.request.urlopen(image_url).read()))
-        except IOError:
-            return "J'arrive pas à charger l'image, tant pis."
+        except IOError as ex:
+            raise ex
+        font = ImageFont.truetype(font_name, 30)
         img_w, img_h = img.size
         ratio = max(600 / img_w, 600 / img_h)
         img_w *= ratio
         img_h *= ratio
         img = img.resize((int(img_w), int(img_h)), Image.ANTIALIAS)
         draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype("./fonts/coolvetica.ttf", 30)
-        text_block = textwrap.wrap(sentence, width=40)
-        pad = 10
+
+        text_block = textwrap.wrap(sentence, width=img_w / 3)
         current_h = img_h / 10
         for line in text_block:
             text_w, text_h = draw.textsize(line, font=font)
             try:
-                text_with_border(draw, (img_w-text_w)/2, current_h, (0, 0, 0, 255), (255, 255, 0, 255), line, font)
-            except Exception:
-                return "L'imprimante est bloquée, bourrage papier."
-            current_h += text_h + pad
+                text_with_border(draw, \
+                                        (img_w-text_w) / 2, \
+                                        current_h, \
+                                        (0, 0, 0, 255), \
+                                        (255, 255, 0, 255), \
+                                        line, \
+                                        font)
+            except Exception as ex:
+                raise ex
+            current_h += text_h + 10
 
         img.save("./maloo.png")
-        # Imgur
-        try:
-            result_url = self.upload_image("./maloo.png")
-        except Exception:
-            return "Imgur ne veut pas me répondre :("
 
-        return result_url
+        return "./maloo.png"
 
     def db_add_word_ba(self, prev_word, stem1, stem2, next_word):
+        """ Used when: "^ ... prev_word STEM1 STEM2 next_word ... $" """
         if not word_is_okay(prev_word) \
             or not word_is_okay(stem1) \
             or not word_is_okay(stem2) \
@@ -267,22 +248,28 @@ class MalooBot:
         sqldb = sqlite3.connect(self.db_name)
         sqlcursor = sqldb.cursor()
 
-        sqlcursor.execute("INSERT OR IGNORE INTO base VALUES (null, '{}', '{}')".format(stem1, stem2))
+        sqlcursor.execute("""INSERT OR IGNORE INTO base
+                                    VALUES (null, '{}', '{}')""".format(stem1, stem2))
         sqlcursor.execute("""SELECT id
-                            FROM base
-                            WHERE word1 = '{}'
-                            AND word2 = '{}'""".format(stem1, stem2))
+                                    FROM base
+                                    WHERE word1 = '{}'
+                                    AND word2 = '{}'""".format(stem1, stem2))
         rows = sqlcursor.fetchall()
         stem_id = rows[0][0]
-        sqlcursor.execute("INSERT OR IGNORE INTO previous VALUES ({}, '{}', 1)".format(stem_id, prev_word))
-        sqlcursor.execute("UPDATE previous SET probability = probability + 1 WHERE stem_id LIKE {}".format(stem_id))
-        sqlcursor.execute("INSERT OR IGNORE INTO next VALUES ({}, '{}', 1)".format(stem_id, next_word))
-        sqlcursor.execute("UPDATE next SET probability = probability + 5  WHERE stem_id LIKE {}".format(stem_id))
+        sqlcursor.execute("""INSERT OR IGNORE INTO previous
+                                    VALUES ({}, '{}', 1)""".format(stem_id, prev_word))
+        sqlcursor.execute("""UPDATE previous SET probability = probability + 1
+                                    WHERE stem_id LIKE {}""".format(stem_id))
+        sqlcursor.execute("""INSERT OR IGNORE INTO next
+                                    VALUES ({}, '{}', 1)""".format(stem_id, next_word))
+        sqlcursor.execute("""UPDATE next SET probability = probability + 5
+                                    WHERE stem_id LIKE {}""".format(stem_id))
 
         sqldb.commit()
         sqldb.close()
 
     def db_add_word_a(self, stem1, stem2, next_word):
+        """ Used when: "^STEM1 STEM2 next_word ... $" """
         if not word_is_okay(stem1) \
             or not word_is_okay(stem2) \
             or not word_is_okay(next_word):
@@ -291,20 +278,24 @@ class MalooBot:
         sqldb = sqlite3.connect(self.db_name)
         sqlcursor = sqldb.cursor()
 
-        sqlcursor.execute("INSERT OR IGNORE INTO base VALUES (null, '{}', '{}')".format(stem1, stem2))
+        sqlcursor.execute("""INSERT OR IGNORE INTO base
+                                    VALUES (null, '{}', '{}')""".format(stem1, stem2))
         sqlcursor.execute("""SELECT id
                             FROM base
                             WHERE word1 = '{}'
                             AND word2 = '{}'""".format(stem1, stem2))
         rows = sqlcursor.fetchall()
         stem_id = rows[0][0]
-        sqlcursor.execute("INSERT OR IGNORE INTO next VALUES ({}, '{}', 1)".format(stem_id, next_word))
-        sqlcursor.execute("UPDATE next SET probability = probability + 5 WHERE stem_id LIKE {}".format(stem_id))
+        sqlcursor.execute("""INSERT OR IGNORE INTO next
+                                    VALUES ({}, '{}', 1)""".format(stem_id, next_word))
+        sqlcursor.execute("""UPDATE next SET probability = probability + 5
+                                    WHERE stem_id LIKE {}""".format(stem_id))
 
         sqldb.commit()
         sqldb.close()
 
     def db_add_word_b(self, stem1, stem2, prev_word):
+        """ Used when: "^ ... prev_word STEM1 STEM2$" """
         if not word_is_okay(prev_word) \
             or not word_is_okay(stem1) \
             or not word_is_okay(stem2):
@@ -313,20 +304,24 @@ class MalooBot:
         sqldb = sqlite3.connect(self.db_name)
         sqlcursor = sqldb.cursor()
 
-        sqlcursor.execute("INSERT OR IGNORE INTO base VALUES (null, '{}', '{}')".format(stem1, stem2))
+        sqlcursor.execute("""INSERT OR IGNORE INTO base
+                                    VALUES (null, '{}', '{}')""".format(stem1, stem2))
         sqlcursor.execute("""SELECT id
-                            FROM base
-                            WHERE word1 = '{}'
-                            AND word2 = '{}'""".format(stem1, stem2))
+                                    FROM base
+                                    WHERE word1 = '{}'
+                                    AND word2 = '{}'""".format(stem1, stem2))
         rows = sqlcursor.fetchall()
         stem_id = rows[0][0]
-        sqlcursor.execute("INSERT OR IGNORE INTO previous VALUES ({}, '{}', 1)".format(stem_id, prev_word))
-        sqlcursor.execute("UPDATE previous SET probability = probability + 5 WHERE stem_id LIKE {}".format(stem_id))
+        sqlcursor.execute("""INSERT OR IGNORE INTO previous
+                                    VALUES ({}, '{}', 1)""".format(stem_id, prev_word))
+        sqlcursor.execute("""UPDATE previous SET probability = probability + 5
+                                    WHERE stem_id LIKE {}""".format(stem_id))
 
         sqldb.commit()
         sqldb.close()
 
     def db_count_base(self):
+        """ Returns the number of couples that are in 'base' """
         sqldb = sqlite3.connect(self.db_name)
         sqlcursor = sqldb.cursor()
 
