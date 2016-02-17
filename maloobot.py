@@ -217,7 +217,7 @@ class MalooBot:
         img = img.resize((int(img_w), int(img_h)), Image.ANTIALIAS)
         draw = ImageDraw.Draw(img)
 
-        text_block = textwrap.wrap(sentence, width=img_w / 3)
+        text_block = textwrap.wrap(sentence, width=40)
         current_h = img_h / 10
         for line in text_block:
             text_w, text_h = draw.textsize(line, font=font)
