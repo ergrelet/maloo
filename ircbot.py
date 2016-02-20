@@ -65,8 +65,12 @@ class IrcBot:
                 self.privmsg(channel, self.maloo.generate_sentence())
 
         elif words[0] == "!maloo_image":
-            hint = words[1] if nb_of_words > 1 else ""
-            query = message.replace(words[0], "")
+            if nb_of_words > 1:
+                hint = words[1]
+                query = message.replace(words[0], "")
+            else:
+                hint = ""
+                query = " ".join(self.maloo.generate_stem())
 
             # Google
             try:
@@ -197,5 +201,4 @@ class IrcBot:
                         server = fields[1]
                         self.on_ping(server)
 
-        self.disconnect("Chelou.")
         print("Disconnected !")

@@ -44,12 +44,11 @@ class MalooBot:
     and to post tweets.
     """
     def __init__(self, config_sql):
-        self.db_name = config_sql["db_name"]
+        self.sqldb = sqlite3.connect(config_sql["db_name"])
 
     def generate_answer(self, sentence):
         """ Generate an answer to the given message """
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         words = sentence.split(" ")
         for word in words:
@@ -89,8 +88,7 @@ class MalooBot:
         seed2 = stem[1]
         sentence = "{} {}".format(seed1, seed2)
 
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         word1 = seed1
         word2 = seed2
@@ -102,14 +100,16 @@ class MalooBot:
                                 ON base.id = next.stem_id
                                 WHERE lower('{}') = lower(base.word1)
                                 AND lower('{}') = lower(base.word2)
-                                ORDER BY RANDOM() * probability DESC
-                                LIMIT 1""".format(word1.replace("'", "''"), \
+                                ORDER BY probability DESC
+                                LIMIT 15""".format(word1.replace("'", "''"), \
                                                 word2.replace("'", "''")))
             rows = sqlcursor.fetchall()
-            if len(rows) == 0:
+            nb_of_results = len(rows)
+            if nb_of_results == 0:
                 break
+            next_id = randrange(0, nb_of_results)
             word1 = word2.lower()
-            word2 = rows[0][0].lower()
+            word2 = rows[next_id][0].lower()
 
             if word2 == ",":
                 sentence = sentence + ","
@@ -129,14 +129,16 @@ class MalooBot:
                                 ON base.id = previous.stem_id
                                 WHERE lower('{}') = lower(base.word1)
                                 AND lower('{}') = lower(base.word2)
-                                ORDER BY RANDOM() * probability DESC
-                                LIMIT 1""".format(word1.replace("'", "''"), \
+                                ORDER BY probability DESC
+                                LIMIT 15""".format(word1.replace("'", "''"), \
                                                 word2.replace("'", "''")))
             rows = sqlcursor.fetchall()
-            if len(rows) == 0:
+            nb_of_results = len(rows)
+            if nb_of_results == 0:
                 break
+            next_id = randrange(0, nb_of_results)
             word2 = word1.lower()
-            word1 = rows[0][0].lower()
+            word1 = rows[next_id][0].lower()
 
             if word1 == ",":
                 sentence = ", " + sentence
@@ -147,15 +149,13 @@ class MalooBot:
             else:
                 sentence = word1 + " " + sentence
 
-        sqldb.commit()
-        sqldb.close()
+        self.sqldb.commit()
 
         return sentence
 
     def generate_stem(self, hint=""):
         """ Returns a random couple of word from the database """
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         if hint != "":
             query = """SELECT word1, word2
@@ -176,8 +176,7 @@ class MalooBot:
         stem1 = rows[0][0]
         stem2 = rows[0][1]
 
-        sqldb.commit()
-        sqldb.close()
+        self.sqldb.commit()
 
         return [stem1, stem2]
 
@@ -245,8 +244,7 @@ class MalooBot:
             or not word_is_okay(next_word):
             return
 
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         sqlcursor.execute("""INSERT OR IGNORE INTO base
                                     VALUES (null, '{}', '{}')""".format(stem1, stem2))
@@ -265,8 +263,7 @@ class MalooBot:
         sqlcursor.execute("""UPDATE next SET probability = probability + 5
                                     WHERE stem_id LIKE {}""".format(stem_id))
 
-        sqldb.commit()
-        sqldb.close()
+        self.sqldb.commit()
 
     def db_add_word_a(self, stem1, stem2, next_word):
         """ Used when: "^STEM1 STEM2 next_word ... $" """
@@ -275,8 +272,7 @@ class MalooBot:
             or not word_is_okay(next_word):
             return
 
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         sqlcursor.execute("""INSERT OR IGNORE INTO base
                                     VALUES (null, '{}', '{}')""".format(stem1, stem2))
@@ -291,8 +287,7 @@ class MalooBot:
         sqlcursor.execute("""UPDATE next SET probability = probability + 5
                                     WHERE stem_id LIKE {}""".format(stem_id))
 
-        sqldb.commit()
-        sqldb.close()
+        self.sqldb.commit()
 
     def db_add_word_b(self, stem1, stem2, prev_word):
         """ Used when: "^ ... prev_word STEM1 STEM2$" """
@@ -301,8 +296,7 @@ class MalooBot:
             or not word_is_okay(stem2):
             return
 
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         sqlcursor.execute("""INSERT OR IGNORE INTO base
                                     VALUES (null, '{}', '{}')""".format(stem1, stem2))
@@ -317,18 +311,15 @@ class MalooBot:
         sqlcursor.execute("""UPDATE previous SET probability = probability + 5
                                     WHERE stem_id LIKE {}""".format(stem_id))
 
-        sqldb.commit()
-        sqldb.close()
+        self.sqldb.commit()
 
     def db_count_base(self):
         """ Returns the number of couples that are in 'base' """
-        sqldb = sqlite3.connect(self.db_name)
-        sqlcursor = sqldb.cursor()
+        sqlcursor = self.sqldb.cursor()
 
         sqlcursor.execute("SELECT COUNT(*) FROM base")
         (result,) = sqlcursor.fetchone()
 
-        sqldb.commit()
-        sqldb.close()
+        self.sqldb.commit()
 
         return result
