@@ -37,18 +37,26 @@ class MalooApi:
             raise ex
         data = response.read().decode("utf-8")
         result = json.loads(data)
-        image_url = result['items'][0]['link'] # return the first image found
+
+        # Find an image that is accessible
+        nb_of_images = len(result['items'])
+        for i in range(nb_of_images):
+            image_url = result['items'][i]['link']
+            try:
+                urllib.request.urlopen(image_url, timeout=5)
+            except urllib.error.HTTPError as ex:
+                continue
+            break
 
         return image_url
 
-    def upload_to_imgur(self, image_path):
+    def upload_to_imgur(self, bin_input):
         """ Uploads an image to imgur
         Note: You need to edit your config.ini to setup the API """
         api_url = "https://api.imgur.com/3/image.json"
         api_key = self.config["imgur_key"]
 
-        file = open(image_path, 'rb')
-        binary_data = file.read()
+        binary_data = bin_input.getvalue()
         payload = {'image': binary_data, 'type': 'file'}
         details = urllib.parse.urlencode(payload).encode('ascii')
         url = urllib.request.Request(api_url, details)
