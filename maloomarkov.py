@@ -264,7 +264,7 @@ class MalooMarkov:
         sqlcursor.execute("""UPDATE next SET probability = probability + 5
                                     WHERE stem_id LIKE {}""".format(stem_id))
 
-        sqldb.commit()
+        self.sqldb.commit()
 
     def db_add_word_a(self, stem1, stem2, next_word):
         """ Used when: "^STEM1 STEM2 next_word ... $" """

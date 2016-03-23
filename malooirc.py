@@ -30,6 +30,7 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
         )
 
         self.ch_list = config_irc["channels"].strip().split(",")
+        self.blacklist = config_irc["blacklist"].strip().split(",")
         self.admins = config_irc["admins"].strip().split(",")
         self.now_learning = True
 
@@ -48,7 +49,7 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
         channel = e.target
         my_nickname = server.get_nickname()
         
-        if user == my_nickname:
+        if user == my_nickname or user in self.blacklist:
             return
 
         words = message.split(" ")
@@ -58,14 +59,14 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
             print(user + " ordered me to quit, bye !")
             self.die(msg="Je vous en prie.")
 
-        elif words[0] == "!maloo_text":
+        elif words[0] == "!text":
             if nb_of_words > 1:
                 query = message.replace(words[0], "")
                 server.privmsg(channel, self.maloo.generate_answer(query))
             else:
                 server.privmsg(channel, self.maloo.generate_sentence())
 
-        elif words[0] == "!maloo_image":
+        elif words[0] == "!image":
             if nb_of_words > 1:
                 hint = words[1]
                 query = message.replace(words[0], "")
@@ -110,9 +111,9 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
                                          """.format(self.maloo.db_count_base()))
         elif words[0] == "!help":
             server.privmsg(channel, "List of available commands :")
-            server.privmsg(channel, """!maloo_image -
+            server.privmsg(channel, """!image -
                                              Generate an image with some awesome text on it.""")
-            server.privmsg(channel, """!maloo_text -
+            server.privmsg(channel, """!text -
                                              Generate a perfectly written sentence
                                             and sends it in this channel.""")
             server.privmsg(channel, """!count -
