@@ -56,7 +56,7 @@ class MalooMarkov:
                 words.remove(word)
         nb_words_left = len(words)
         if nb_words_left == 0:
-            return self.generate_sentence([])
+            return self.generate_sentence()
         elif nb_words_left == 1:
             word_id = 0
         else:
@@ -80,7 +80,7 @@ class MalooMarkov:
         """ Generate a sentence.
         If a stem (a couple of word) is given, it is used to generate the sentence,
         otherwise, a random stem is generated """
-        if stem is None:
+        if stem is None or len(stem) < 2:
             stem = self.generate_stem()
             while len(stem[0]) < 2 and len(stem[1]) < 2:
                 stem = self.generate_stem()
