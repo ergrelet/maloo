@@ -7,16 +7,18 @@ maloomarkov.py
 Here's the definition of the MalooMarkov class.
 """
 
-from io import BytesIO
-from random import randrange
 import textwrap
 import urllib.request
-
+from random import randrange
+from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
-import sqlite3
+
+import maloosql
 
 def word_is_okay(word):
-    """ This function is checking for undesired words """
+    """
+    This function is checking for undesired words
+    """
     return word.replace("'", "").replace("-", "").isalnum() or \
         word == "," or \
         word == "." or \
@@ -25,8 +27,10 @@ def word_is_okay(word):
         word == "?" or \
         word == "..."
 
-def text_with_border(draw, pos_x, pos_y, b_color, f_color, text, font):
-    """ Needed to write text with borders of a different color """
+def draw_text_with_border(draw, pos_x, pos_y, b_color, f_color, text, font):
+    """
+    Needed to write text with borders of a different color
+    """
     try:
         draw.text((pos_x + 1, pos_y), text, font=font, fill=b_color)
         draw.text((pos_x - 1, pos_y), text, font=font, fill=b_color)
@@ -36,152 +40,153 @@ def text_with_border(draw, pos_x, pos_y, b_color, f_color, text, font):
     except Exception as ex:
         raise ex
 
-class MalooMarkov:
+class MalooMarkov(object):
     """
     This class is Maloo's core.
     It generates sentences, learn from sentences,
     goes on the internet (!) to find images, upload images
     and to post tweets.
     """
-    def __init__(self, config_sql):
-        self.sqldb = sqlite3.connect(config_sql["db_name"])
+    def __init__(self, sql_config):
+        self.sql = maloosql.MalooSql(sql_config)
 
     def generate_answer(self, sentence):
-        """ Generate an answer to the given message """
-        sqlcursor = self.sqldb.cursor()
+        """
+        Generate an answer to the given message
+        """
+        sane_sentence = self.sanatize_sentence(sentence)
+        word = self.find_random_revelant_word(sane_sentence)
+        if not word:
+            answer = self.generate_sentence()
+        else:
+            stem = self.generate_stem(word)
+            answer = self.generate_sentence(stem)
 
-        words = sentence.split(" ")
+        return answer
+
+    @staticmethod
+    def find_random_revelant_word(sentence):
+        words = sentence.split()
         for word in words:
             if len(word) < 4:
                 words.remove(word)
+
         nb_words_left = len(words)
         if nb_words_left == 0:
-            return self.generate_sentence()
+            return None
         elif nb_words_left == 1:
             word_id = 0
         else:
             word_id = randrange(0, len(words))
-        word = words[word_id]
-        query = """SELECT word1, word2
-                        FROM base
-                        WHERE (lower(word1)=lower('{0}') or lower(word2)=lower('{0}'))
-                        ORDER BY RANDOM()
-                        LIMIT 1""".format(word.replace("'", "''"))
-        sqlcursor.execute(query)
-        rows = sqlcursor.fetchall()
-        if len(rows) == 0:
-            [word, next_word] = self.generate_stem()
-        else:
-            [word, next_word] = rows[0]
 
-        return self.generate_sentence([word, next_word])
+        return words[word_id]
 
     def generate_sentence(self, stem=None):
-        """ Generate a sentence.
-        If a stem (a couple of word) is given, it is used to generate the sentence,
-        otherwise, a random stem is generated """
-        if stem is None or len(stem) < 2:
+        """
+        Generate a sentence.
+        If a stem (a couple of word) is given, it is used to generate the
+        sentence, otherwise, a random stem is generated.
+        """
+        if not stem or len(stem) < 2:
             stem = self.generate_stem()
             while len(stem[0]) < 2 and len(stem[1]) < 2:
                 stem = self.generate_stem()
-        seed1 = stem[0]
-        seed2 = stem[1]
-        sentence = "{} {}".format(seed1, seed2)
-
-        sqlcursor = self.sqldb.cursor()
-
-        word1 = seed1
-        word2 = seed2
+        sentence = "%s %s" % stem
         # Right side
+        word1, word2 = stem
         for _ in range(60):
-            sqlcursor.execute("""SELECT next.word
-                                FROM base
-                                INNER JOIN next
-                                ON base.id = next.stem_id
-                                WHERE lower('{}') = lower(base.word1)
-                                AND lower('{}') = lower(base.word2)
-                                ORDER BY probability DESC
-                                LIMIT 15""".format(word1.replace("'", "''"), \
-                                                word2.replace("'", "''")))
-            rows = sqlcursor.fetchall()
-            nb_of_results = len(rows)
-            if nb_of_results == 0:
+            next_word = self.sql.find_next_word(word1, word2)
+            if not next_word:
                 break
-            next_id = randrange(0, nb_of_results)
             word1 = word2.lower()
-            word2 = rows[next_id][0].lower()
-
-            if word2 == ",":
-                sentence = sentence + ","
-            elif word2 in [".", "?", "!"]:
-                sentence = sentence + word2
+            word2 = next_word
+            sentence, complete = self.add_next_word_to_sentence(sentence,
+                                                                next_word)
+            if complete:
                 break
-            else:
-                sentence = sentence + " " + word2
 
-        word1 = seed1
-        word2 = seed2
         # Left side
+        word1, word2 = stem
         for _ in range(30):
-            sqlcursor.execute("""SELECT previous.word
-                                FROM base
-                                INNER JOIN previous
-                                ON base.id = previous.stem_id
-                                WHERE lower('{}') = lower(base.word1)
-                                AND lower('{}') = lower(base.word2)
-                                ORDER BY probability DESC
-                                LIMIT 15""".format(word1.replace("'", "''"), \
-                                                word2.replace("'", "''")))
-            rows = sqlcursor.fetchall()
-            nb_of_results = len(rows)
-            if nb_of_results == 0:
+            prev_word = self.sql.find_previous_word(word1, word2)
+            if not prev_word:
                 break
-            next_id = randrange(0, nb_of_results)
             word2 = word1.lower()
-            word1 = rows[next_id][0].lower()
-
-            if word1 == ",":
-                sentence = ", " + sentence
-            elif word2 == ",":
-                sentence = word1 + sentence
-            elif word1 in [".", "?", "!"]:
+            word1 = prev_word
+            sentence, complete = self.add_previous_word_to_sentence(sentence,
+                                                                    prev_word)
+            if complete:
                 break
-            else:
-                sentence = word1 + " " + sentence
-
-        self.sqldb.commit()
 
         return sentence
 
-    def generate_stem(self, hint=""):
-        """ Returns a random couple of word from the database """
-        sqlcursor = self.sqldb.cursor()
+    def add_next_word_to_sentence(self, sentence, word):
+        sentence_is_complete = False
 
-        if hint != "":
-            query = """SELECT word1, word2
-                            FROM base
-                            WHERE (lower('{0}') = lower(word1) or lower('{0}') = lower(word2))
-                            ORDER BY RANDOM()
-                            LIMIT 1""".format(hint.replace("'", "''"))
+        if self.word_ends_sentence(word):
+            sentence = "%s%s" % (word, sentence)
+            sentence_is_complete = True
+        elif self.word_has_no_space_before(word):
+            sentence = "%s%s" % (word, sentence)
         else:
-            query = """SELECT word1, word2
-                            FROM base
-                            ORDER BY RANDOM()
-                            LIMIT 1"""
-        sqlcursor.execute(query)
-        rows = sqlcursor.fetchall()
+            sentence = "%s %s" % (word, sentence)
 
-        if len(rows) == 0:
-            return self.generate_stem()
-        stem1 = rows[0][0]
-        stem2 = rows[0][1]
+        return sentence, sentence_is_complete
 
-        self.sqldb.commit()
+    def add_previous_word_to_sentence(self, sentence, word):
+        sentence_is_complete = False
+        if self.word_ends_sentence(word):
+            sentence_is_complete = True
+        elif self.word_has_no_space_before(sentence[0]):
+            sentence = "%s%s" % (word, sentence)
+        else:
+            sentence = "%s %s" % (word, sentence)
 
-        return [stem1, stem2]
+        return sentence, sentence_is_complete
 
-    def learnfrom_sentence(self, sentence):
-        """ Extracts words from a sentence to save it the database """
+    @staticmethod
+    def word_has_no_space_before(word):
+        no_space = [",", ";", ":"]
+        return word in no_space
+
+    @staticmethod
+    def word_ends_sentence(word):
+        ender = [".", "?", "!"]
+        return word in ender
+
+    def generate_stem(self, hint=None):
+        """
+        Returns a random couple of word from the database
+        """
+        if hint:
+            stem = self.sql.find_tuple_containing_word(hint)
+            if not stem:
+                stem = self.sql.find_random_tuple()
+        else:
+            stem = self.sql.find_random_tuple()
+
+        return stem
+
+    def learn_from_sentence(self, sentence):
+        """
+        Extract words from a sentence and save them in the database.
+        """
+        sane_sentence = self.sanatize_sentence(sentence)
+        words = sane_sentence.split()
+        nb_of_words = len(words)
+        if nb_of_words > 2:
+            self.db_add_word_a(words[0], words[1], words[2])
+            for i in range(nb_of_words - 3):
+                self.db_add_word_ba(words[i],
+                                    words[i+1],
+                                    words[i+2],
+                                    words[i+3])
+            self.db_add_word_b(words[nb_of_words-3],
+                               words[nb_of_words-2],
+                               words[nb_of_words-1])
+
+    @staticmethod
+    def sanatize_sentence(sentence):
         sentence = sentence.replace("'", "''")
         sentence = sentence.replace(",", " , ")
         sentence = sentence.replace(".", " . ")
@@ -192,135 +197,96 @@ class MalooMarkov:
         sentence = sentence.replace("\"", "")
         sentence = sentence.replace(u"\xab", "")
         sentence = sentence.replace(u"\xbb", "")
-        words = sentence.split()
-        nb_of_words = len(words)
-        if nb_of_words > 2:
-            self.db_add_word_a(words[0], words[1], words[2])
-            for i in range(nb_of_words-3):
-                self.db_add_word_ba(words[i], words[i+1], words[i+2], words[i+3])
-            self.db_add_word_b(words[nb_of_words-3], words[nb_of_words-2], words[nb_of_words-1])
+        return sentence
 
-    def generate_image(self, image_url, font_name, hint=""):
-        """ Very obscure shit, good exception generator """
-        stem = self.generate_stem(hint)
-        sentence = self.generate_sentence(stem)
+    def generate_image(self, image_url, font_name, hint=None):
+        """
+        Resize image and draw generated text on it, then return the result.
+        """
         try:
             img = Image.open(BytesIO(urllib.request.urlopen(image_url).read()))
         except IOError as ex:
             raise ex
-        font = ImageFont.truetype(font_name, 30)
+
+        resized_img = self.resize_image(img)
+        stem = self.generate_stem(hint)
+        sentence = self.generate_sentence(stem)
+        text_block = textwrap.wrap(sentence, width=40)
+        try:
+            self.draw_text_block(resized_img, text_block, font_name)
+        except Exception as ex:
+            raise ex
+
+        output = BytesIO()
+        img.save(output, format='PNG')
+        return output
+
+    @staticmethod
+    def resize_image(img):
         img_w, img_h = img.size
         ratio = max(600 / img_w, 600 / img_h)
         img_w *= ratio
         img_h *= ratio
-        img = img.resize((int(img_w), int(img_h)), Image.ANTIALIAS)
-        draw = ImageDraw.Draw(img)
+        resized_img = img.resize((int(img_w), int(img_h)), Image.ANTIALIAS)
 
-        text_block = textwrap.wrap(sentence, width=40)
-        current_h = img_h / 10
+        return resized_img
+
+    @staticmethod
+    def draw_text_block(img, text_block, font_name):
+        draw = ImageDraw.Draw(img)
+        img_width, img_height = img.size
+        font = ImageFont.truetype(font_name, 30)
+        current_h = img_height / 10
         for line in text_block:
-            text_w, text_h = draw.textsize(line, font=font)
+            text_width, text_height = draw.textsize(line, font=font)
             try:
-                text_with_border(draw, \
-                                        (img_w-text_w) / 2, \
-                                        current_h, \
-                                        (0, 0, 0, 255), \
-                                        (255, 255, 0, 255), \
-                                        line, \
-                                        font)
+                draw_text_with_border(draw,
+                                      (img_width - text_width) / 2,
+                                      current_h,
+                                      (0, 0, 0, 255),
+                                      (255, 255, 0, 255),
+                                      line,
+                                      font)
             except Exception as ex:
                 raise ex
-            current_h += text_h + 10
-        
-        output = BytesIO()
-        img.save(output, format='PNG')
-
-        return output
+            current_h += text_height + 10
 
     def db_add_word_ba(self, prev_word, stem1, stem2, next_word):
-        """ Used when: "^ ... prev_word STEM1 STEM2 next_word ... $" """
-        if not word_is_okay(prev_word) \
-            or not word_is_okay(stem1) \
-            or not word_is_okay(stem2) \
-            or not word_is_okay(next_word):
-            return
-
-        sqlcursor = self.sqldb.cursor()
-
-        sqlcursor.execute("""INSERT OR IGNORE INTO base
-                                    VALUES (null, '{}', '{}')""".format(stem1, stem2))
-        sqlcursor.execute("""SELECT id
-                                    FROM base
-                                    WHERE word1 = '{}'
-                                    AND word2 = '{}'""".format(stem1, stem2))
-        rows = sqlcursor.fetchall()
-        stem_id = rows[0][0]
-        sqlcursor.execute("""INSERT OR IGNORE INTO previous
-                                    VALUES ({}, '{}', 1)""".format(stem_id, prev_word))
-        sqlcursor.execute("""UPDATE previous SET probability = probability + 1
-                                    WHERE stem_id LIKE {}""".format(stem_id))
-        sqlcursor.execute("""INSERT OR IGNORE INTO next
-                                    VALUES ({}, '{}', 1)""".format(stem_id, next_word))
-        sqlcursor.execute("""UPDATE next SET probability = probability + 5
-                                    WHERE stem_id LIKE {}""".format(stem_id))
-
-        self.sqldb.commit()
+        """
+        Used when we have a sentence containing :
+        "^ ... prev_word STEM1 STEM2 next_word ... $"
+        """
+        if word_is_okay(prev_word) \
+        and word_is_okay(stem1) \
+        and word_is_okay(stem2) \
+        and word_is_okay(next_word):
+            self.sql.add_previous_and_next_word(stem1,
+                                                stem2,
+                                                prev_word,
+                                                next_word)
 
     def db_add_word_a(self, stem1, stem2, next_word):
-        """ Used when: "^STEM1 STEM2 next_word ... $" """
-        if not word_is_okay(stem1) \
-            or not word_is_okay(stem2) \
-            or not word_is_okay(next_word):
-            return
-
-        sqlcursor = self.sqldb.cursor()
-
-        sqlcursor.execute("""INSERT OR IGNORE INTO base
-                                    VALUES (null, '{}', '{}')""".format(stem1, stem2))
-        sqlcursor.execute("""SELECT id
-                            FROM base
-                            WHERE word1 = '{}'
-                            AND word2 = '{}'""".format(stem1, stem2))
-        rows = sqlcursor.fetchall()
-        stem_id = rows[0][0]
-        sqlcursor.execute("""INSERT OR IGNORE INTO next
-                                    VALUES ({}, '{}', 1)""".format(stem_id, next_word))
-        sqlcursor.execute("""UPDATE next SET probability = probability + 5
-                                    WHERE stem_id LIKE {}""".format(stem_id))
-
-        self.sqldb.commit()
+        """
+        Used when we have a sentence containing :
+        "^STEM1 STEM2 next_word ... $"
+        """
+        if word_is_okay(stem1) \
+        and word_is_okay(stem2) \
+        and word_is_okay(next_word):
+            self.sql.add_next_word(stem1, stem2, next_word)
 
     def db_add_word_b(self, stem1, stem2, prev_word):
-        """ Used when: "^ ... prev_word STEM1 STEM2$" """
-        if not word_is_okay(prev_word) \
-            or not word_is_okay(stem1) \
-            or not word_is_okay(stem2):
-            return
-
-        sqlcursor = self.sqldb.cursor()
-
-        sqlcursor.execute("""INSERT OR IGNORE INTO base
-                                    VALUES (null, '{}', '{}')""".format(stem1, stem2))
-        sqlcursor.execute("""SELECT id
-                                    FROM base
-                                    WHERE word1 = '{}'
-                                    AND word2 = '{}'""".format(stem1, stem2))
-        rows = sqlcursor.fetchall()
-        stem_id = rows[0][0]
-        sqlcursor.execute("""INSERT OR IGNORE INTO previous
-                                    VALUES ({}, '{}', 1)""".format(stem_id, prev_word))
-        sqlcursor.execute("""UPDATE previous SET probability = probability + 5
-                                    WHERE stem_id LIKE {}""".format(stem_id))
-
-        self.sqldb.commit()
+        """
+        Used when we have a sentence containing :
+        "^ ... prev_word STEM1 STEM2$"
+        """
+        if word_is_okay(prev_word) \
+        and word_is_okay(stem1) \
+        and word_is_okay(stem2):
+            self.sql.add_previous_word(stem1, stem2, prev_word)
 
     def db_count_base(self):
-        """ Returns the number of couples that are in 'base' """
-        sqlcursor = self.sqldb.cursor()
-
-        sqlcursor.execute("SELECT COUNT(*) FROM base")
-        (result,) = sqlcursor.fetchone()
-
-        self.sqldb.commit()
-
-        return result
+        """
+        Returns the number of couples that are in 'base'
+        """
+        return self.sql.get_size_of_base()

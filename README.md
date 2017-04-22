@@ -16,4 +16,4 @@ Create and edit a config file (config.ini for example). See config_example.ini f
 
 ## Usage ##
 
-	$ python3 main.py <config-file>
+	$ python3 maloo.py <config-file>

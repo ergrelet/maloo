@@ -11,10 +11,9 @@ import copy
 import json
 import urllib.parse
 import urllib.request
-
 import twitter
 
-class MalooApi:
+class MalooApi(object):
     """
     TODO
     """
@@ -22,9 +21,11 @@ class MalooApi:
         self.config = copy.copy(config)
 
     def find_on_googleimage(self, query):
-        """ Retrieve the first image's URL on Google Images by searching
+        """
+        Retrieve the first image's URL on Google Images by searching
         for 'query'
-        Note: You need to edit your config.ini to setup the API """
+        Note: You need to edit your config.ini to setup the API
+        """
         url = "https://www.googleapis.com/customsearch/v1" \
                 + "?q={}".format(urllib.parse.quote_plus(query)) \
                 + "&searchType=image" \
@@ -44,15 +45,17 @@ class MalooApi:
             image_url = result['items'][i]['link']
             try:
                 urllib.request.urlopen(image_url, timeout=5)
-            except urllib.error.HTTPError as ex:
-                continue
-            break
+                break
+            except urllib.error.HTTPError:
+                pass
 
         return image_url
 
     def upload_to_imgur(self, bin_input):
-        """ Uploads an image to imgur
-        Note: You need to edit your config.ini to setup the API """
+        """
+        Uploads an image to imgur
+        Note: You need to edit your config.ini to setup the API
+        """
         api_url = "https://api.imgur.com/3/image.json"
         api_key = self.config["imgur_key"]
 
@@ -69,10 +72,11 @@ class MalooApi:
 
         return j['data']['link']
 
-    def post_on_tweet(self, message):
-        """ Posts 'message" on twitter.
-        Note: You need to edit your config.ini to setup the API """
-        # Twitter
+    def post_on_twitter(self, message):
+        """
+        Posts 'message" on twitter.
+        Note: You need to edit your config.ini to setup the API
+        """
         try:
             oauth = twitter.OAuth(self.config["twitter_token"], \
                                             self.config["twitter_token_secret"], \
