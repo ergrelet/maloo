@@ -55,7 +55,7 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
         nb_of_words = len(words)
 
         if words[0] == "!quit":
-            self.process_quit_command(user)
+            self.process_quit_command(e)
         elif words[0] == "!text":
             self.process_text_command(server, e)
         elif words[0] == "!image":
@@ -75,7 +75,8 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
             elif self.now_learning and nb_of_words > 3 and message[0].isalpha():
                 self.maloo.learn_from_sentence(message)
 
-    def process_quit_command(self, user):
+    def process_quit_command(self, e):
+        user = e.source.nick
         if user in self.admins:
             print("%s ordered me to quit, bye !" % user)
             self.die(msg="Je vous en prie.")
@@ -133,6 +134,7 @@ class MalooIrc(irc.bot.SingleServerIRCBot):
         server.privmsg(channel, imgur_url)
 
     def process_learn_command(self, server, e):
+        user = e.source.nick
         channel = e.target
         if user in self.admins:
             if self.now_learning:

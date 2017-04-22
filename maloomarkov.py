@@ -124,12 +124,12 @@ class MalooMarkov(object):
         sentence_is_complete = False
 
         if self.word_ends_sentence(word):
-            sentence = "%s%s" % (word, sentence)
+            sentence = "%s%s" % (sentence, word)
             sentence_is_complete = True
         elif self.word_has_no_space_before(word):
-            sentence = "%s%s" % (word, sentence)
+            sentence = "%s%s" % (sentence, word)
         else:
-            sentence = "%s %s" % (word, sentence)
+            sentence = "%s %s" % (sentence, word)
 
         return sentence, sentence_is_complete
 
