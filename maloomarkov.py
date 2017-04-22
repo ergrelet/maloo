@@ -213,7 +213,7 @@ class MalooMarkov(object):
         sentence = self.generate_sentence(stem)
         text_block = textwrap.wrap(sentence, width=40)
         try:
-            self.draw_text_block(resized_img, text_block, font_name)
+            img = self.draw_text_block(resized_img, text_block, font_name)
         except Exception as ex:
             raise ex
 
@@ -250,6 +250,8 @@ class MalooMarkov(object):
             except Exception as ex:
                 raise ex
             current_h += text_height + 10
+            
+        return img
 
     def db_add_word_ba(self, prev_word, stem1, stem2, next_word):
         """
