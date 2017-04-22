@@ -94,7 +94,7 @@ class MalooMarkov(object):
         sentence = "%s %s" % stem
         # Right side
         word1, word2 = stem
-        for _ in range(60):
+        for _ in range(30):
             next_word = self.sql.find_next_word(word1, word2)
             if not next_word:
                 break
@@ -250,7 +250,7 @@ class MalooMarkov(object):
             except Exception as ex:
                 raise ex
             current_h += text_height + 10
-            
+
         return img
 
     def db_add_word_ba(self, prev_word, stem1, stem2, next_word):
